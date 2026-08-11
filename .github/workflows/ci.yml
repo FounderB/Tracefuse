@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test build clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --all
+
+      - name: Release build
+        run: cargo build --release
+
+      - name: Doctor
+        run: ./target/release/tracefuse doctor .
+
+      - name: Explain smoke
+        run: |
+          ./target/release/tracefuse explain ci/pull-request-target
+          ./target/release/tracefuse explain ci/oidc-misuse
+
+      - name: Demo smoke (vulnerable)
+        run: ./target/release/tracefuse scan examples/demo-vulnerable --fail-on critical || test $? -eq 1
+
+      - name: Demo smoke (clean)
+        run: ./target/release/tracefuse scan examples/demo-clean --fail-on high
+
+      - name: SARIF emit smoke
+        run: |
+          ./target/release/tracefuse scan examples/demo-vulnerable \
+            --sarif /tmp/tracefuse.sarif --fail-on info -q || true
+          test -s /tmp/tracefuse.sarif
+          grep -q '2.1.0' /tmp/tracefuse.sarif
+          grep -q 'evidenceRedacted\|partialFingerprints' /tmp/tracefuse.sarif

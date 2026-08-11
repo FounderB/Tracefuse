@@ -1,0 +1,42 @@
+[package]
+name = "tracefuse"
+version = "0.1.0"
+edition = "2021"
+description = "Supply-chain / pipeline truth scanner — compare declared vs real"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/FounderB/Tracefuse"
+homepage = "https://github.com/FounderB/Tracefuse"
+keywords = ["security", "sbom", "secrets", "devops", "supply-chain"]
+categories = ["command-line-utilities", "development-tools"]
+authors = ["FounderB <FounderB@users.noreply.github.com>"]
+rust-version = "1.74"
+
+[[bin]]
+name = "tracefuse"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+ignore = "0.4"
+owo-colors = "4"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+toml = "0.8"
+walkdir = "2"
+sha2 = "0.10"
+hex = "0.4"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+[dev-dependencies]
+tempfile = "3"
+assert_cmd = "2"
+predicates = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

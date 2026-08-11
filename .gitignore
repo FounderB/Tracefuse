@@ -1,0 +1,15 @@
+/target/
+**/*.rs.bk
+Cargo.lock.bak
+.DS_Store
+*.swp
+*.swo
+.env
+.env.*
+!.env.example
+# Intentional FAKE secrets for the offline demo fixture
+!examples/demo-vulnerable/.env
+.tracefuse/
+*.sarif
+.idea/
+.vscode/

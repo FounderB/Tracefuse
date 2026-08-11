@@ -1,0 +1,52 @@
+name: Tracefuse Scan
+description: Offline supply-chain / pipeline truth scanner (declared vs real). Emits SARIF.
+author: FounderB
+
+branding:
+  icon: shield
+  color: orange
+
+inputs:
+  path:
+    description: Path to scan
+    required: false
+    default: "."
+  fail-on:
+    description: Fail when findings at or above this severity exist
+    required: false
+    default: high
+  sarif-path:
+    description: Where to write the SARIF 2.1.0 report
+    required: false
+    default: tracefuse.sarif
+  quiet:
+    description: Suppress human banner (true/false)
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install Tracefuse
+      shell: bash
+      run: cargo install --path "${{ github.action_path }}/.." --locked --force
+
+    - name: Run Tracefuse
+      shell: bash
+      run: |
+        QFLAG=""
+        if [ "${{ inputs.quiet }}" = "true" ]; then QFLAG="-q"; fi
+        tracefuse scan "${{ inputs.path }}" \
+          --sarif "${{ inputs.sarif-path }}" \
+          --fail-on "${{ inputs.fail-on }}" \
+          $QFLAG
+
+    - name: Upload SARIF
+      if: always()
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ inputs.sarif-path }}
+        category: tracefuse

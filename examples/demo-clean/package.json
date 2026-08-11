@@ -1,0 +1,13 @@
+{
+  "name": "demo-clean",
+  "version": "1.0.0",
+  "description": "Minimal clean Tracefuse demo — should score well",
+  "private": true,
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node -e \"require('./src/index.js'); console.log('ok')\""
+  },
+  "dependencies": {
+    "left-pad": "1.3.0"
+  }
+}
