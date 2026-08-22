@@ -164,9 +164,44 @@ pub fn scan(root: &Path, files: &[PathBuf], cfg: &Config) -> Result<Vec<Finding>
                     });
                 }
             }
-        }
 
-        let _ = cfg;
+            for rule in &cfg.custom_rules {
+                if let Some(needle) = rule.path_contains.as_deref() {
+                    let rel = rel_display(root, path);
+                    if !rel.to_string_lossy().contains(needle) {
+                        continue;
+                    }
+                }
+                let Ok(re) = Regex::new(&rule.pattern) else {
+                    continue;
+                };
+                if let Some(m) = re.find(line) {
+                    findings.push(Finding {
+                        id: format!(
+                            "custom/{}/{}:{}",
+                            rule.id,
+                            rel_display(root, path).display(),
+                            line_no
+                        ),
+                        detector: "custom".into(),
+                        severity: rule.severity,
+                        title: rule.title.clone(),
+                        message: format!(
+                            "Custom rule `{}` matched in {}:{line_no}",
+                            rule.id,
+                            rel_display(root, path).display()
+                        ),
+                        file: Some(rel_display(root, path)),
+                        line: Some(line_no),
+                        evidence: Some(redact_secret(m.as_str())),
+                        remediation: Some(
+                            "Review the match; tune or remove the custom rule if it is a false positive."
+                                .into(),
+                        ),
+                    });
+                }
+            }
+        }
     }
 
     Ok(findings)

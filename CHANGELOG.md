@@ -5,16 +5,18 @@ All notable changes to Tracefuse will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] — 2026-08-22
 
 ### Added
 
-- `tracefuse doctor` and `tracefuse explain <rule-id>` DX commands
-- Global `sanitize_findings` / `redact_in_text` safety net across human, JSON, and SARIF
-- `[severity_overrides]` in `.tracefuse.toml`
-- Detectors: GCP API keys, GitHub fine-grained PATs, Slack webhooks, Dockerfile `curl|sh`, CI OIDC misuse
-- Thin composite GitHub Action at `action/action.yml`
-- CI: fmt + clippy required; doctor/explain/demo/SARIF smoke
+- `[[custom_rules]]` in `.tracefuse.toml` — user regex rules (id, title, pattern, severity)
+- `tracefuse scan --git-diff` — scan only files changed vs HEAD (+ untracked)
+- GitHub Action input `git-diff`
+
+### Security
+
+- Composite Action passes inputs via env + argv (no shell interpolation of `${{ inputs.* }}` into command strings)
+- Stronger path containment check (`ensure_within_or_equal` uses canonicalize + prefix)
 
 ## [0.1.0] — 2026-08-11
 

@@ -20,28 +20,63 @@ pub fn run_scan(root: &Path, cfg: &Config) -> Result<ScanReport> {
     ensure_within_or_equal(&root, &root)?;
 
     let files = collect_files(&root, cfg)?;
+    run_scan_collected(&root, cfg, files)
+}
+
+/// Scan only paths changed in `git diff` (staged + unstaged vs HEAD, plus untracked).
+pub fn run_scan_git_diff(root: &Path, cfg: &Config) -> Result<ScanReport> {
+    let root = root
+        .canonicalize()
+        .with_context(|| format!("resolving scan root {}", root.display()))?;
+    ensure_within_or_equal(&root, &root)?;
+    let changed = git_changed_rel_paths(&root)?;
+    let mut files = Vec::new();
+    for rel in changed {
+        let full = root.join(&rel);
+        if !full.is_file() {
+            continue;
+        }
+        if should_ignore(&root, &full, cfg) {
+            continue;
+        }
+        if let Ok(meta) = fs::metadata(&full) {
+            if meta.len() > cfg.max_file_bytes {
+                continue;
+            }
+        }
+        if let Ok(canon) = full.canonicalize() {
+            if !canon.starts_with(&root) {
+                continue;
+            }
+        }
+        files.push(full);
+    }
+    run_scan_collected(&root, cfg, files)
+}
+
+fn run_scan_collected(root: &Path, cfg: &Config, files: Vec<PathBuf>) -> Result<ScanReport> {
     let mut findings: Vec<Finding> = Vec::new();
 
     if cfg.detectors.secrets {
-        findings.extend(detect::secrets::scan(&root, &files, cfg)?);
+        findings.extend(detect::secrets::scan(root, &files, cfg)?);
     }
     if cfg.detectors.scripts {
-        findings.extend(detect::scripts::scan(&root, &files)?);
+        findings.extend(detect::scripts::scan(root, &files)?);
     }
     if cfg.detectors.lockfile {
-        findings.extend(detect::lockfile::scan(&root, &files)?);
+        findings.extend(detect::lockfile::scan(root, &files)?);
     }
     if cfg.detectors.dockerfile {
-        findings.extend(detect::dockerfile::scan(&root, &files)?);
+        findings.extend(detect::dockerfile::scan(root, &files)?);
     }
     if cfg.detectors.ci {
-        findings.extend(detect::ci::scan(&root, &files)?);
+        findings.extend(detect::ci::scan(root, &files)?);
     }
     if cfg.detectors.env_files {
-        findings.extend(detect::env_files::scan(&root, &files)?);
+        findings.extend(detect::env_files::scan(root, &files)?);
     }
     if cfg.detectors.deps {
-        findings.extend(detect::deps::scan(&root, &files)?);
+        findings.extend(detect::deps::scan(root, &files)?);
     }
 
     apply_severity_overrides(&mut findings, cfg);
@@ -62,13 +97,54 @@ pub fn run_scan(root: &Path, cfg: &Config) -> Result<ScanReport> {
     Ok(ScanReport {
         tool: "tracefuse".into(),
         version: VERSION.into(),
-        root,
+        root: root.to_path_buf(),
         scanned_at: chrono::Utc::now().to_rfc3339(),
         score,
         summary,
         findings,
         next_steps,
     })
+}
+
+fn git_changed_rel_paths(root: &Path) -> Result<Vec<PathBuf>> {
+    use std::process::Command;
+    let mut out = Vec::new();
+    let mut push_lines = |stdout: &[u8]| {
+        for line in String::from_utf8_lossy(stdout).lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            out.push(PathBuf::from(line));
+        }
+    };
+    let diff = Command::new("git")
+        .args(["-C", &root.to_string_lossy(), "diff", "--name-only", "HEAD"])
+        .output()
+        .context("running git diff --name-only HEAD")?;
+    if !diff.status.success() {
+        anyhow::bail!(
+            "git diff failed (is this a git repo?): {}",
+            String::from_utf8_lossy(&diff.stderr).trim()
+        );
+    }
+    push_lines(&diff.stdout);
+    let untracked = Command::new("git")
+        .args([
+            "-C",
+            &root.to_string_lossy(),
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+        ])
+        .output()
+        .context("running git ls-files")?;
+    if untracked.status.success() {
+        push_lines(&untracked.stdout);
+    }
+    out.sort();
+    out.dedup();
+    Ok(out)
 }
 
 fn collect_files(root: &Path, cfg: &Config) -> Result<Vec<PathBuf>> {
@@ -132,7 +208,29 @@ fn ensure_within_or_equal(root: &Path, candidate: &Path) -> Result<()> {
             anyhow::bail!("path traversal rejected: {}", candidate.display());
         }
     }
-    let _ = root;
+    let root_can = root
+        .canonicalize()
+        .with_context(|| format!("resolving root {}", root.display()))?;
+    let cand_can = if candidate.exists() {
+        candidate
+            .canonicalize()
+            .with_context(|| format!("resolving path {}", candidate.display()))?
+    } else {
+        // For not-yet-existing paths, resolve parent + file name.
+        let parent = candidate.parent().unwrap_or(Path::new("."));
+        let name = candidate.file_name().ok_or_else(|| anyhow::anyhow!("empty path"))?;
+        parent
+            .canonicalize()
+            .with_context(|| format!("resolving parent of {}", candidate.display()))?
+            .join(name)
+    };
+    if cand_can != root_can && !cand_can.starts_with(&root_can) {
+        anyhow::bail!(
+            "path escapes scan root: {} (root {})",
+            cand_can.display(),
+            root_can.display()
+        );
+    }
     Ok(())
 }
 

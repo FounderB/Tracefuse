@@ -23,6 +23,10 @@ inputs:
     description: Suppress human banner (true/false)
     required: false
     default: "true"
+  git-diff:
+    description: Only scan files changed vs HEAD (true/false)
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -36,13 +40,29 @@ runs:
 
     - name: Run Tracefuse
       shell: bash
+      env:
+        TF_PATH: ${{ inputs.path }}
+        TF_SARIF: ${{ inputs.sarif-path }}
+        TF_FAIL_ON: ${{ inputs.fail-on }}
+        TF_QUIET: ${{ inputs.quiet }}
+        TF_GIT_DIFF: ${{ inputs.git-diff }}
       run: |
-        QFLAG=""
-        if [ "${{ inputs.quiet }}" = "true" ]; then QFLAG="-q"; fi
-        tracefuse scan "${{ inputs.path }}" \
-          --sarif "${{ inputs.sarif-path }}" \
-          --fail-on "${{ inputs.fail-on }}" \
-          $QFLAG
+        set -euo pipefail
+        # Validate fail-on against allowlist (never interpolate raw into arbitrary flags)
+        case "${TF_FAIL_ON}" in
+          info|low|medium|high|critical) ;;
+          *) echo "invalid fail-on: ${TF_FAIL_ON}"; exit 2 ;;
+        esac
+        QFLAG=()
+        if [ "${TF_QUIET}" = "true" ]; then QFLAG+=(-q); fi
+        GFLAG=()
+        if [ "${TF_GIT_DIFF}" = "true" ]; then GFLAG+=(--git-diff); fi
+        # Paths as argv — env-sourced, not string-interpolated into a shell script body
+        tracefuse scan "${TF_PATH}" \
+          --sarif "${TF_SARIF}" \
+          --fail-on "${TF_FAIL_ON}" \
+          "${QFLAG[@]}" \
+          "${GFLAG[@]}"
 
     - name: Upload SARIF
       if: always()

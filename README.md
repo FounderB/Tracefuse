@@ -70,6 +70,20 @@ cargo build --release
 
 Expect findings across **secrets**, **scripts**, **lockfile**, **dockerfile**, **ci**, **env_files**, and **deps**. Exit `1` when policy fails; exit `2` on tool error.
 
+### New in 0.2
+
+```bash
+# Only files changed vs HEAD (+ untracked)
+./target/release/tracefuse scan . --git-diff
+
+# Custom regex in .tracefuse.toml
+# [[custom_rules]]
+# id = "corp-token"
+# title = "Corp internal token"
+# pattern = '(?i)\bCORP_[A-Z0-9]{24}\b'
+# severity = "high"
+```
+
 ## Why not `grep` for secrets?
 
 | | Naive `grep` / regex dump | Tracefuse |

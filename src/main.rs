@@ -44,6 +44,7 @@ fn run() -> Result<ExitCode> {
             fail_on,
             config,
             quiet,
+            git_diff,
         } => {
             let root = path.unwrap_or_else(|| std::env::current_dir().unwrap());
             let mut cfg = load_config(&root, config.as_deref())?;
@@ -51,7 +52,11 @@ fn run() -> Result<ExitCode> {
                 cfg.fail_on = level.into();
             }
 
-            let report = run_scan(&root, &cfg)?;
+            let report = if git_diff {
+                tracefuse::scan::run_scan_git_diff(&root, &cfg)?
+            } else {
+                run_scan(&root, &cfg)?
+            };
 
             if json {
                 emit_json(&report, &mut std::io::stdout())?;

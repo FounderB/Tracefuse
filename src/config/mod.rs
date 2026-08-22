@@ -43,6 +43,28 @@ pub struct Config {
     /// Override severity by rule id prefix, detector name, or title.
     /// Example: `"ci/pull-request-target" = "medium"`
     pub severity_overrides: BTreeMap<String, FindingSeverity>,
+    /// Extra regex rules (applied by secrets detector).
+    #[serde(default)]
+    pub custom_rules: Vec<CustomRule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomRule {
+    /// Unique id slug, e.g. `corp-api-key`
+    pub id: String,
+    /// Human title
+    pub title: String,
+    /// Rust regex (case-sensitive unless you add `(?i)`)
+    pub pattern: String,
+    #[serde(default = "default_custom_severity")]
+    pub severity: FindingSeverity,
+    /// Optional glob-ish path substring filter (matched against relative path)
+    #[serde(default)]
+    pub path_contains: Option<String>,
+}
+
+fn default_custom_severity() -> FindingSeverity {
+    FindingSeverity::High
 }
 
 impl Default for Config {
@@ -61,6 +83,7 @@ impl Default for Config {
             detectors: DetectorToggles::default(),
             max_file_bytes: 2 * 1024 * 1024,
             severity_overrides: BTreeMap::new(),
+            custom_rules: Vec::new(),
         }
     }
 }
@@ -154,6 +177,13 @@ deps       = true
 # [severity_overrides]
 # "ci/pull-request-target" = "medium"
 # "secrets" = "critical"
+
+# Optional custom regex rules (secrets detector)
+# [[custom_rules]]
+# id = "corp-token"
+# title = "Corp internal token"
+# pattern = '(?i)\\bCORP_[A-Z0-9]{24}\\b'
+# severity = "high"
 "#;
 
 #[cfg(test)]

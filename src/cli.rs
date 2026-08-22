@@ -44,6 +44,10 @@ pub enum Commands {
         /// Suppress human output (useful with --json / --sarif)
         #[arg(long, short = 'q')]
         quiet: bool,
+
+        /// Only scan files changed vs HEAD (git diff + untracked)
+        #[arg(long)]
+        git_diff: bool,
     },
 
     /// Write an example `.tracefuse.toml` config
