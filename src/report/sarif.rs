@@ -56,6 +56,9 @@ pub fn emit_sarif(report: &ScanReport, path: &Path) -> Result<()> {
                 result["partialFingerprints"] = json!({
                     "evidenceHash": short_hash(ev)
                 });
+                result["properties"] = json!({
+                    "evidenceRedacted": true
+                });
             }
             result
         })

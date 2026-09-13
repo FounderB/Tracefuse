@@ -72,7 +72,8 @@ fn sarif_written_with_redacted_properties() {
     let text = std::fs::read_to_string(&sarif).unwrap();
     assert!(text.contains("\"version\": \"2.1.0\""));
     assert!(text.contains("Tracefuse"));
-    assert!(text.contains("evidenceRedacted") || text.contains("partialFingerprints"));
+    assert!(text.contains("\"evidenceRedacted\": true"));
+    assert!(text.contains("partialFingerprints"));
     assert!(!text.contains("FAKEEXAMPLEPRIVATEKEYMATERIALNOTREAL"));
 }
 

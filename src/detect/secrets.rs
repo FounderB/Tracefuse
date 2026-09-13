@@ -76,10 +76,13 @@ fn patterns() -> &'static Vec<(Regex, &'static str, FindingSeverity)> {
 
 /// High-entropy token heuristic (base64-ish / hex-ish long strings).
 fn entropy_suspect(line: &str) -> Option<String> {
-    let re = Regex::new(
-        r#"(?i)(?:secret|token|password|api[_-]?key|auth)\s*[=:]\s*['\"]?([A-Za-z0-9+/=_\-]{28,})['\"]?"#,
-    )
-    .ok()?;
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        Regex::new(
+            r#"(?i)(?:secret|token|password|api[_-]?key|auth)\s*[=:]\s*['\"]?([A-Za-z0-9+/=_\-]{28,})['\"]?"#,
+        )
+        .expect("entropy regex")
+    });
     re.captures(line)
         .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
 }
