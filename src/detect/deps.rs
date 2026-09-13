@@ -39,11 +39,33 @@ pub fn scan(root: &Path, files: &[PathBuf]) -> Result<Vec<Finding>> {
 fn check_package(root: &Path, path: &Path, pkg: &str, ver: &str, findings: &mut Vec<Finding>) {
     let lower = pkg.to_ascii_lowercase();
 
+    // ua-parser-js was historically compromised (2021) — flag only known-bad versions, not all uses
+    if lower == "ua-parser-js" {
+        if is_weird_ua_parser_version(ver) {
+            findings.push(Finding {
+                id: format!("deps/dangerous/{pkg}"),
+                detector: "deps".into(),
+                severity: FindingSeverity::High,
+                title: format!("Compromised ua-parser-js version: {pkg}@{ver}"),
+                message: format!(
+                    "Dependency `{pkg}@{ver}` matches a historically compromised ua-parser-js release"
+                ),
+                file: Some(rel_display(root, path)),
+                line: None,
+                evidence: Some(format!("{pkg}@{ver}")),
+                remediation: Some(
+                    "Pin to a patched release (e.g. ≥0.7.30 / ≥0.8.1 / ≥1.0.1) and audit the lockfile."
+                        .into(),
+                ),
+            });
+        }
+        return;
+    }
+
     // Known dangerous / joke malware-ish patterns often used in demos & real incidents
     const DANGEROUS: &[&str] = &[
         "event-stream",
         "flatmap-stream",
-        "ua-parser-js", // historically compromised — flag only with weird version below
         "crossenv",
         "cross-env.js",
         "electorn",
@@ -143,6 +165,32 @@ fn check_package(root: &Path, path: &Path, pkg: &str, ver: &str, findings: &mut 
     }
 }
 
+/// Known malicious ua-parser-js releases from the 2021 npm account compromise.
+fn is_weird_ua_parser_version(ver: &str) -> bool {
+    const BAD: &[&str] = &["0.7.29", "0.8.0", "1.0.0"];
+    let base = normalize_npm_version(ver);
+    BAD.contains(&base.as_str())
+}
+
+fn normalize_npm_version(ver: &str) -> String {
+    let mut s = ver.trim().trim_start_matches(['v', 'V']);
+    // Strip range / comparator prefixes (^, ~, >=, <=, >, <, =)
+    loop {
+        let next = s
+            .trim_start()
+            .trim_start_matches(['^', '~', '=', '>', '<', ' ']);
+        if next == s {
+            break;
+        }
+        s = next;
+    }
+    s.split(|c: char| c.is_whitespace() || c == '|' || c == ',')
+        .next()
+        .unwrap_or(s)
+        .trim()
+        .to_string()
+}
+
 fn is_typosquatish(candidate: &str, popular: &str) -> bool {
     if candidate.len().abs_diff(popular.len()) > 1 {
         return false;
@@ -186,5 +234,31 @@ mod tests {
         assert_eq!(levenshtein("react", "reacr"), 1);
         assert_eq!(levenshtein("lodash", "lodahs"), 2);
         assert_eq!(levenshtein("react", "react"), 0);
+    }
+
+    #[test]
+    fn ua_parser_js_flags_only_compromised_versions() {
+        let dir = tempdir().unwrap();
+        let bad = dir.path().join("package.json");
+        fs::write(
+            &bad,
+            r#"{"name":"x","dependencies":{"ua-parser-js":"0.7.29"}}"#,
+        )
+        .unwrap();
+        let findings = scan(dir.path(), &[bad]).unwrap();
+        assert!(findings.iter().any(|f| f.id.contains("ua-parser-js")));
+
+        let ok_pkg = dir.path().join("pkg");
+        fs::create_dir_all(&ok_pkg).unwrap();
+        let ok_path = ok_pkg.join("package.json");
+        fs::write(
+            &ok_path,
+            r#"{"name":"x","dependencies":{"ua-parser-js":"^1.0.37"}}"#,
+        )
+        .unwrap();
+        let findings_ok = scan(dir.path(), &[ok_path]).unwrap();
+        assert!(!findings_ok
+            .iter()
+            .any(|f| f.id.contains("ua-parser-js") || f.title.contains("ua-parser-js")));
     }
 }

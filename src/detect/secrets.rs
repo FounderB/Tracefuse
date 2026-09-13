@@ -84,7 +84,7 @@ fn entropy_suspect(line: &str) -> Option<String> {
         .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
 }
 
-pub fn scan(root: &Path, files: &[PathBuf], cfg: &Config) -> Result<Vec<Finding>> {
+pub fn scan(root: &Path, files: &[PathBuf], _cfg: &Config) -> Result<Vec<Finding>> {
     let mut findings = Vec::new();
     let skip_ext = [
         ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".woff", ".woff2", ".pdf", ".zip", ".gz",
@@ -164,7 +164,39 @@ pub fn scan(root: &Path, files: &[PathBuf], cfg: &Config) -> Result<Vec<Finding>
                     });
                 }
             }
+        }
+    }
 
+    Ok(findings)
+}
+
+/// Apply `[[custom_rules]]` independently of the secrets detector toggle.
+pub fn scan_custom(root: &Path, files: &[PathBuf], cfg: &Config) -> Result<Vec<Finding>> {
+    if cfg.custom_rules.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut findings = Vec::new();
+    let skip_ext = [
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".woff", ".woff2", ".pdf", ".zip", ".gz",
+        ".tgz", ".lock",
+    ];
+
+    for path in files {
+        let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+        let lower = name.to_ascii_lowercase();
+        if skip_ext.iter().any(|e| lower.ends_with(e)) {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(path) else {
+            continue;
+        };
+        if content.chars().take(800).any(|c| c == '\0') {
+            continue;
+        }
+
+        for (lineno, line) in content.lines().enumerate() {
+            let line_no = lineno + 1;
             for rule in &cfg.custom_rules {
                 if let Some(needle) = rule.path_contains.as_deref() {
                     let rel = rel_display(root, path);
@@ -286,5 +318,26 @@ mod tests {
     fn entropy_helper() {
         assert!(shannon_entropy("aaaaaaaa") < 1.0);
         assert!(shannon_entropy("aB3$_xY9QmLp2VwZ8") > 3.0);
+    }
+
+    #[test]
+    fn custom_rules_run_without_builtin_secrets() {
+        use crate::config::CustomRule;
+        let dir = tempdir().unwrap();
+        let f = dir.path().join("app.txt");
+        fs::write(&f, "CORP_ABCDEFGHIJKLMNOPQRSTUVWX\n").unwrap();
+        let mut cfg = Config::default();
+        cfg.custom_rules.push(CustomRule {
+            id: "corp-token".into(),
+            title: "Corp internal token".into(),
+            pattern: r"(?i)\bCORP_[A-Z0-9]{24}\b".into(),
+            severity: FindingSeverity::High,
+            path_contains: None,
+        });
+        // Builtin secrets scan would not match CORP_*; custom rules still fire
+        let custom = scan_custom(dir.path(), &[f], &cfg).unwrap();
+        assert!(custom
+            .iter()
+            .any(|x| x.detector == "custom" && x.id.contains("corp-token")));
     }
 }

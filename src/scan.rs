@@ -60,6 +60,8 @@ fn run_scan_collected(root: &Path, cfg: &Config, files: Vec<PathBuf>) -> Result<
     if cfg.detectors.secrets {
         findings.extend(detect::secrets::scan(root, &files, cfg)?);
     }
+    // Custom rules are independent of the secrets detector toggle
+    findings.extend(detect::secrets::scan_custom(root, &files, cfg)?);
     if cfg.detectors.scripts {
         findings.extend(detect::scripts::scan(root, &files)?);
     }
@@ -218,7 +220,9 @@ fn ensure_within_or_equal(root: &Path, candidate: &Path) -> Result<()> {
     } else {
         // For not-yet-existing paths, resolve parent + file name.
         let parent = candidate.parent().unwrap_or(Path::new("."));
-        let name = candidate.file_name().ok_or_else(|| anyhow::anyhow!("empty path"))?;
+        let name = candidate
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("empty path"))?;
         parent
             .canonicalize()
             .with_context(|| format!("resolving parent of {}", candidate.display()))?
@@ -340,5 +344,31 @@ mod tests {
             .iter()
             .filter(|f| f.detector == "secrets")
             .all(|f| f.severity == FindingSeverity::Low));
+    }
+
+    #[test]
+    fn custom_rules_run_when_secrets_disabled() {
+        use crate::config::CustomRule;
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("note.txt"),
+            "CORP_ABCDEFGHIJKLMNOPQRSTUVWX\n",
+        )
+        .unwrap();
+        let mut cfg = Config::default();
+        cfg.detectors.secrets = false;
+        cfg.custom_rules.push(CustomRule {
+            id: "corp-token".into(),
+            title: "Corp internal token".into(),
+            pattern: r"(?i)\bCORP_[A-Z0-9]{24}\b".into(),
+            severity: FindingSeverity::High,
+            path_contains: None,
+        });
+        let report = run_scan(dir.path(), &cfg).unwrap();
+        assert!(report
+            .findings
+            .iter()
+            .any(|f| f.detector == "custom" && f.id.contains("corp-token")));
+        assert!(!report.findings.iter().any(|f| f.detector == "secrets"));
     }
 }

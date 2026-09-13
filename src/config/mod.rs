@@ -43,7 +43,7 @@ pub struct Config {
     /// Override severity by rule id prefix, detector name, or title.
     /// Example: `"ci/pull-request-target" = "medium"`
     pub severity_overrides: BTreeMap<String, FindingSeverity>,
-    /// Extra regex rules (applied by secrets detector).
+    /// Extra regex rules (run independently of the secrets detector toggle).
     #[serde(default)]
     pub custom_rules: Vec<CustomRule>,
 }
@@ -178,7 +178,7 @@ deps       = true
 # "ci/pull-request-target" = "medium"
 # "secrets" = "critical"
 
-# Optional custom regex rules (secrets detector)
+# Optional custom regex rules (independent of secrets detector)
 # [[custom_rules]]
 # id = "corp-token"
 # title = "Corp internal token"
